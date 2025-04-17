@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -125,5 +126,5 @@ func FetchLyrics(title, artist, album string) (*LrcLibLyric, error) {
 }
 
 func urlQueryEscape(s string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(s, " ", "+"), "&", "%26")
+	return url.QueryEscape(s)
 }

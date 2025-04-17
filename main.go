@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"os"
 	"sync"
 
 	"github.com/best8oy/LyricsMPRIS/logutil"
@@ -15,12 +14,6 @@ import (
 )
 
 var verbose bool
-
-func logVerbose(format string, args ...interface{}) {
-	if verbose {
-		fmt.Fprintf(os.Stderr, format+"\n", args...)
-	}
-}
 
 func watchMPRISAndDisplayLyrics(mode string) {
 	conn, err := dbus.ConnectSessionBus()

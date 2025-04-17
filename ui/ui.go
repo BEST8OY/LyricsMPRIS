@@ -203,7 +203,3 @@ func centerText(s string, width int) string {
 	right := pad - left
 	return strings.Repeat(" ", left) + s + strings.Repeat(" ", right)
 }
-
-func spaces(n int) string {
-	return string(make([]rune, n))
-}
