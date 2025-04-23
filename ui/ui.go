@@ -199,7 +199,7 @@ func ModernModeContext(ctx context.Context, lyric *lyrics.Lyric, _ float64) {
 			line := lyric.Lines[i].Text
 			centered := centerText(line, termWidth)
 			if i == cur {
-				fmt.Printf("%s%s%s%s\n", ansiBold, ansiCyan, centered, ansiReset)
+				fmt.Printf("%s%s%s%s", ansiBold, ansiCyan, centered, ansiReset) // removed \n
 			} else if i < cur {
 				fmt.Printf("%s%s%s%s%s\n", ansiFaint, ansiItalic, centered, ansiReset, ansiReset)
 			} else {
