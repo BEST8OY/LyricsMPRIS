@@ -51,7 +51,7 @@ func watchMPRISAndDisplayLyrics(mode string) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			lyric, err := lyrics.FetchLyrics(meta.Title, meta.Artist, meta.Album)
+			lyric, err := lyrics.FetchLyrics(meta.Title, meta.Artist, meta.Album, pos)
 			if err != nil || lyric == nil || len(lyric.Lines) == 0 {
 				return
 			}
