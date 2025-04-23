@@ -37,7 +37,7 @@ func watchMPRISAndDisplayLyrics(mode string) {
 	conn.Signal(signalCh)
 
 	var lastTrack mpris.TrackMetadata
-	var lastLyric *lyrics.LrcLibLyric
+	var lastLyric *lyrics.Lyric
 	var cancel context.CancelFunc
 	var wg sync.WaitGroup
 

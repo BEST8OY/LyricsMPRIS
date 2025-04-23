@@ -25,7 +25,7 @@ const (
 	ansiHome   = "\033[H"
 )
 
-func PipeModeContext(ctx context.Context, lyric *lyrics.LrcLibLyric, _ float64) {
+func PipeModeContext(ctx context.Context, lyric *lyrics.Lyric, _ float64) {
 	lastLineIdx := -1
 	printed := make(map[int]bool)
 	for {
@@ -63,7 +63,7 @@ func PipeModeContext(ctx context.Context, lyric *lyrics.LrcLibLyric, _ float64) 
 			lineIdx = i
 		}
 		if lineIdx != -1 && lineIdx != lastLineIdx && !printed[lineIdx] {
-			fmt.Println(lyric.Lines[lineIdx].Words)
+			fmt.Println(lyric.Lines[lineIdx].Text)
 			lastLineIdx = lineIdx
 			printed[lineIdx] = true
 		}
@@ -71,7 +71,7 @@ func PipeModeContext(ctx context.Context, lyric *lyrics.LrcLibLyric, _ float64) 
 	}
 }
 
-func ModernModeContext(ctx context.Context, lyric *lyrics.LrcLibLyric, _ float64) {
+func ModernModeContext(ctx context.Context, lyric *lyrics.Lyric, _ float64) {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -154,7 +154,7 @@ func ModernModeContext(ctx context.Context, lyric *lyrics.LrcLibLyric, _ float64
 				fmt.Println()
 			}
 			for i := from; i < to; i++ {
-				line := lyric.Lines[i].Words
+				line := lyric.Lines[i].Text
 				centered := centerText(line, termWidth)
 				if i == cur {
 					// sptlrx: current line is cyan and bold, no markers
