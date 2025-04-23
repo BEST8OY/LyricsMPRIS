@@ -11,13 +11,18 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "modern", "Mode: 'pipe' for piping current lyric line, 'modern' for modern terminal UI")
+	pipe := flag.Bool("pipe", false, "Pipe current lyric line to stdout (default is modern UI)")
 	flag.Parse()
 
 	var mu sync.Mutex
 	var cancel context.CancelFunc
 	var wg sync.WaitGroup
 	var lastLyric *lyrics.Lyric
+
+	displayMode := "modern"
+	if *pipe {
+		displayMode = "pipe"
+	}
 
 	handleTrack := func(meta mpris.TrackMetadata, pos float64) {
 		mu.Lock()
@@ -31,7 +36,7 @@ func main() {
 		mu.Unlock()
 		go func() {
 			defer wg.Done()
-			lyric, _ := ui.DisplayLyricsContext(ctx, *mode, meta, pos)
+			lyric, _ := ui.DisplayLyricsContext(ctx, displayMode, meta, pos)
 			mu.Lock()
 			lastLyric = lyric
 			mu.Unlock()
@@ -56,7 +61,7 @@ func main() {
 		mu.Unlock()
 		go func() {
 			defer wg.Done()
-			if *mode == "pipe" {
+			if displayMode == "pipe" {
 				ui.PipeModeContext(ctx, lyric, pos)
 			} else {
 				ui.ModernModeContext(ctx, lyric, pos)
