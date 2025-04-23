@@ -8,10 +8,13 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"unsafe"
 
 	"github.com/best8oy/LyricsMPRIS/lyrics"
 	"github.com/best8oy/LyricsMPRIS/mpris"
+	tea "github.com/charmbracelet/bubbletea"
+	gloss "github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
+	"golang.org/x/term"
 )
 
 // ANSI escape codes for styling (sptlrx style)
@@ -25,6 +28,30 @@ const (
 	ansiHome   = "\033[H"
 )
 
+// global terminal size state
+var termWidth, termHeight int
+
+func init() {
+	updateTerminalSize()
+	go watchTerminalResize()
+}
+
+func updateTerminalSize() {
+	w, h, err := term.GetSize(int(os.Stdout.Fd()))
+	if err == nil {
+		termWidth = w
+		termHeight = h
+	}
+}
+
+func watchTerminalResize() {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGWINCH)
+	for range sigs {
+		updateTerminalSize()
+	}
+}
+
 // DisplayLyricsContext handles lyric fetching and UI display for a given track and position.
 func DisplayLyricsContext(ctx context.Context, mode string, meta mpris.TrackMetadata, pos float64) (*lyrics.Lyric, error) {
 	lyric, err := lyrics.FetchLyrics(meta.Title, meta.Artist, meta.Album, pos)
@@ -33,6 +60,8 @@ func DisplayLyricsContext(ctx context.Context, mode string, meta mpris.TrackMeta
 	}
 	if mode == "pipe" {
 		PipeModeContext(ctx, lyric, pos)
+	} else if mode == "bubbletea" {
+		BubbleTeaModeContext(ctx, lyric, pos)
 	} else {
 		ModernModeContext(ctx, lyric, pos)
 	}
@@ -187,20 +216,89 @@ func ModernModeContext(ctx context.Context, lyric *lyrics.Lyric, _ float64) {
 	}
 }
 
+func BubbleTeaModeContext(ctx context.Context, lyric *lyrics.Lyric, _ float64) {
+	if lyric == nil || len(lyric.Lines) == 0 {
+		fmt.Println("No lyrics found")
+		return
+	}
+	p := tea.NewProgram(newLyricModel(lyric), tea.WithContext(ctx))
+	_ = p.Start()
+}
+
+type lyricModel struct {
+	lyric *lyrics.Lyric
+	cur   int
+	w, h  int
+}
+
+func newLyricModel(lyric *lyrics.Lyric) *lyricModel {
+	return &lyricModel{lyric: lyric, cur: 0, w: 80, h: 24}
+}
+
+func (m *lyricModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m *lyricModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.w, m.h = msg.Width, msg.Height
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "q", "esc", "ctrl+c":
+			return m, tea.Quit
+		case "up":
+			if m.cur > 0 {
+				m.cur--
+			}
+		case "down":
+			if m.cur < len(m.lyric.Lines)-1 {
+				m.cur++
+			}
+		}
+	}
+	return m, nil
+}
+
+func (m *lyricModel) View() string {
+	if m.lyric == nil || len(m.lyric.Lines) == 0 {
+		return gloss.NewStyle().Align(gloss.Center).Width(m.w).Render("No lyrics found")
+	}
+	windowSize := 9
+	from := m.cur - windowSize/2
+	if from < 0 {
+		from = 0
+	}
+	to := from + windowSize
+	if to > len(m.lyric.Lines) {
+		to = len(m.lyric.Lines)
+	}
+	lines := make([]string, 0, to-from)
+	for i := from; i < to; i++ {
+		line := m.lyric.Lines[i].Text
+		style := gloss.NewStyle().Width(m.w).Align(gloss.Center)
+		if i == m.cur {
+			style = style.Bold(true).Foreground(gloss.Color("36"))
+		} else if i < m.cur {
+			style = style.Faint(true).Italic(true)
+		}
+		lines = append(lines, style.Render(line))
+	}
+	return gloss.JoinVertical(gloss.Center, lines...)
+}
+
 func getTerminalWidth() int {
-	ws, err := getWinsize()
-	if err != nil || ws.Col < 40 {
+	if termWidth < 40 {
 		return 80
 	}
-	return int(ws.Col)
+	return termWidth
 }
 
 func getTerminalHeight() int {
-	ws, err := getWinsize()
-	if err != nil || ws.Row < 10 {
+	if termHeight < 10 {
 		return 24
 	}
-	return int(ws.Row)
+	return termHeight
 }
 
 type winsize struct {
@@ -210,22 +308,8 @@ type winsize struct {
 	y   uint16
 }
 
-func getWinsize() (*winsize, error) {
-	ws := &winsize{}
-	_, _, err := syscall.Syscall(syscall.SYS_IOCTL,
-		uintptr(syscall.Stdin),
-		uintptr(syscall.TIOCGWINSZ),
-		uintptr(unsafe.Pointer(ws)),
-	)
-	if err != 0 {
-		return nil, err
-	}
-	return ws, nil
-}
-
 func centerText(s string, width int) string {
-	runes := []rune(s)
-	pad := width - len(runes)
+	pad := width - runewidth.StringWidth(s)
 	if pad <= 0 {
 		return s
 	}
