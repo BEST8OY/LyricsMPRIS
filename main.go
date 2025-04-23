@@ -10,19 +10,29 @@ import (
 	"github.com/best8oy/LyricsMPRIS/ui"
 )
 
+// Config holds application settings.
+type Config struct {
+	displayMode    string
+	pollIntervalMs int
+}
+
 func main() {
 	pipe := flag.Bool("pipe", false, "Pipe current lyric line to stdout (default is modern UI)")
+	pollMs := flag.Int("poll", 200, "Lyric poll interval in milliseconds")
 	flag.Parse()
+
+	cfg := Config{
+		displayMode:    "modern",
+		pollIntervalMs: *pollMs,
+	}
+	if *pipe {
+		cfg.displayMode = "pipe"
+	}
 
 	var mu sync.Mutex
 	var cancel context.CancelFunc
 	var wg sync.WaitGroup
 	var lastLyric *lyrics.Lyric
-
-	displayMode := "modern"
-	if *pipe {
-		displayMode = "pipe"
-	}
 
 	handleTrack := func(meta mpris.TrackMetadata, pos float64) {
 		mu.Lock()
@@ -36,10 +46,18 @@ func main() {
 		mu.Unlock()
 		go func() {
 			defer wg.Done()
-			lyric, _ := ui.DisplayLyricsContext(ctx, displayMode, meta, pos)
+			lyric, _ := lyrics.FetchLyrics(meta.Title, meta.Artist, meta.Album, pos)
 			mu.Lock()
 			lastLyric = lyric
 			mu.Unlock()
+			if lyric == nil || len(lyric.Lines) == 0 {
+				return
+			}
+			if cfg.displayMode == "pipe" {
+				ui.PipeModeContext(ctx)
+			} else {
+				ui.TerminalLyricsContext(ctx)
+			}
 		}()
 	}
 
@@ -61,10 +79,10 @@ func main() {
 		mu.Unlock()
 		go func() {
 			defer wg.Done()
-			if displayMode == "pipe" {
-				ui.PipeModeContext(ctx, lyric, pos)
+			if cfg.displayMode == "pipe" {
+				ui.PipeModeContext(ctx)
 			} else {
-				ui.ModernModeContext(ctx, lyric, pos)
+				ui.TerminalLyricsContext(ctx)
 			}
 		}()
 	}

@@ -1,6 +1,7 @@
 //go:build linux
 // +build linux
 
+// Package mpris provides interfaces and functions for interacting with MPRIS-compatible media players over D-Bus.
 package mpris
 
 import (
@@ -19,6 +20,28 @@ type TrackMetadata struct {
 	Title  string
 	Artist string
 	Album  string
+}
+
+// MPRISClient defines an interface for MPRIS metadata and event handling.
+type MPRISClient interface {
+	GetMetadata(ctx context.Context) (*TrackMetadata, float64, error)
+	GetPositionAndStatus(ctx context.Context) (float64, string, error)
+	WatchAndHandleEvents(ctx context.Context, onTrackChange func(meta TrackMetadata, pos float64), onSeek func(meta TrackMetadata, pos float64)) error
+}
+
+// Ensure default implementation matches MPRISClient
+var _ MPRISClient = (*defaultMPRISClient)(nil)
+
+type defaultMPRISClient struct{}
+
+func (d *defaultMPRISClient) GetMetadata(ctx context.Context) (*TrackMetadata, float64, error) {
+	return GetMetadata(ctx)
+}
+func (d *defaultMPRISClient) GetPositionAndStatus(ctx context.Context) (float64, string, error) {
+	return GetPositionAndStatus(ctx)
+}
+func (d *defaultMPRISClient) WatchAndHandleEvents(ctx context.Context, onTrackChange func(meta TrackMetadata, pos float64), onSeek func(meta TrackMetadata, pos float64)) error {
+	return WatchAndHandleEvents(ctx, onTrackChange, onSeek)
 }
 
 // ListPlayers returns all available MPRIS player names for diagnostics.
@@ -57,7 +80,7 @@ func getActivePlayer(conn *dbus.Conn) (string, error) {
 	return "", errors.New("playerctld (org.mpris.MediaPlayer2.playerctld) not found on the session bus")
 }
 
-// GetMetadata fetches metadata from the first available MPRIS player
+// GetMetadata fetches metadata from the first available MPRIS player.
 func GetMetadata(ctx context.Context) (*TrackMetadata, float64, error) {
 	conn, err := dbus.ConnectSessionBus()
 	if err != nil {
@@ -98,7 +121,7 @@ func GetMetadata(ctx context.Context) (*TrackMetadata, float64, error) {
 	return nil, 0, fmt.Errorf("no valid title/artist/album/duration for %s", playerName)
 }
 
-// GetPositionAndStatus fetches the current playback position (seconds) and playback status (Playing/Paused)
+// GetPositionAndStatus fetches the current playback position (seconds) and playback status (Playing/Paused).
 func GetPositionAndStatus(ctx context.Context) (float64, string, error) {
 	conn, err := dbus.ConnectSessionBus()
 	if err != nil {

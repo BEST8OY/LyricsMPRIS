@@ -1,3 +1,4 @@
+// Package lyrics provides functions and interfaces for fetching and parsing lyrics from lrclib.net.
 package lyrics
 
 import (
@@ -20,6 +21,11 @@ type LyricLine struct {
 // Lyric holds all parsed lyric lines.
 type Lyric struct {
 	Lines []LyricLine
+}
+
+// LyricsFetcher defines an interface for fetching lyrics.
+type LyricsFetcher interface {
+	FetchLyrics(title, artist, album string, duration float64) (*Lyric, error)
 }
 
 // lrclibAPIResponse models the response from lrclib.net API.
@@ -48,6 +54,15 @@ func FetchLyrics(title, artist, album string, duration float64) (*Lyric, error) 
 	}
 	// Fallback to search endpoint
 	return fetchLyricsBySearch(client, title, artist)
+}
+
+// Ensure FetchLyrics is compatible with LyricsFetcher
+var _ LyricsFetcher = (*defaultLyricsFetcher)(nil)
+
+type defaultLyricsFetcher struct{}
+
+func (d *defaultLyricsFetcher) FetchLyrics(title, artist, album string, duration float64) (*Lyric, error) {
+	return FetchLyrics(title, artist, album, duration)
 }
 
 // fetchAndParse performs the HTTP GET and parses the response for synced lyrics.
@@ -147,6 +162,14 @@ func parseSyncedLyrics(synced string) []LyricLine {
 		lines = append(lines, LyricLine{Time: timeVal, Text: text})
 	}
 	return lines
+}
+
+// Timesynced returns true if the lyrics are time-synced (LRC style).
+func Timesynced(lines []LyricLine) bool {
+	if len(lines) < 2 {
+		return false
+	}
+	return lines[0].Time > 0 || lines[1].Time > 0
 }
 
 // normalizeQuotes replaces curly quotes with straight quotes for better API matching.

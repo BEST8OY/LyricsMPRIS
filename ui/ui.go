@@ -1,56 +1,21 @@
+// Package ui provides terminal user interfaces for displaying lyrics in pipe and modern modes.
 package ui
 
 import (
 	"context"
 	"fmt"
 	"os"
-	"os/signal"
+	"runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/best8oy/LyricsMPRIS/lyrics"
 	"github.com/best8oy/LyricsMPRIS/mpris"
+	"github.com/best8oy/LyricsMPRIS/pool"
 	tea "github.com/charmbracelet/bubbletea"
 	gloss "github.com/charmbracelet/lipgloss"
-	"github.com/mattn/go-runewidth"
 	"golang.org/x/term"
 )
-
-// ANSI escape codes for styling (sptlrx style)
-const (
-	ansiReset  = "\033[0m"
-	ansiBold   = "\033[1m"
-	ansiFaint  = "\033[2m"
-	ansiItalic = "\033[3m"
-	ansiCyan   = "\033[36m"
-	ansiClear  = "\033[2J"
-	ansiHome   = "\033[H"
-)
-
-// global terminal size state
-var termWidth, termHeight int
-
-func init() {
-	updateTerminalSize()
-	go watchTerminalResize()
-}
-
-func updateTerminalSize() {
-	w, h, err := term.GetSize(int(os.Stdout.Fd()))
-	if err == nil {
-		termWidth = w
-		termHeight = h
-	}
-}
-
-func watchTerminalResize() {
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGWINCH)
-	for range sigs {
-		updateTerminalSize()
-	}
-}
 
 // DisplayLyricsContext handles lyric fetching and UI display for a given track and position.
 func DisplayLyricsContext(ctx context.Context, mode string, meta mpris.TrackMetadata, pos float64) (*lyrics.Lyric, error) {
@@ -59,248 +24,217 @@ func DisplayLyricsContext(ctx context.Context, mode string, meta mpris.TrackMeta
 		return nil, err
 	}
 	if mode == "pipe" {
-		PipeModeContext(ctx, lyric, pos)
-	} else if mode == "bubbletea" {
-		BubbleTeaModeContext(ctx, lyric, pos)
+		PipeModeContext(ctx)
 	} else {
-		ModernModeContext(ctx, lyric, pos)
+		TerminalLyricsContext(ctx)
 	}
 	return lyric, nil
 }
 
-func PipeModeContext(ctx context.Context, lyric *lyrics.Lyric, _ float64) {
+// PipeModeContext prints lyrics line-by-line to stdout for pipe mode.
+func PipeModeContext(ctx context.Context) {
+	ch := make(chan pool.Update)
+	go pool.Listen(ctx, ch, 200*time.Millisecond)
 	lastLineIdx := -1
 	printed := make(map[int]bool)
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		default:
-		}
-		pos, status, err := mpris.GetPositionAndStatus(ctx)
-		if err != nil {
-			time.Sleep(200 * time.Millisecond)
-			continue
-		}
-		if status != "Playing" {
-			// Wait until playback resumes, checking every 1s for efficiency
-			for status != "Playing" {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-				}
-				time.Sleep(1 * time.Second)
-				_, status, err = mpris.GetPositionAndStatus(ctx)
-				if err != nil {
-					time.Sleep(1 * time.Second)
-				}
+		case upd := <-ch:
+			if upd.Err != nil || len(upd.Lines) == 0 {
+				continue
 			}
-			continue
-		}
-		lineIdx := -1
-		for i, line := range lyric.Lines {
-			if pos < line.Time {
-				break
+			if upd.Index != lastLineIdx && !printed[upd.Index] {
+				fmt.Println(upd.Lines[upd.Index].Text)
+				lastLineIdx = upd.Index
+				printed[upd.Index] = true
 			}
-			lineIdx = i
 		}
-		if lineIdx != -1 && lineIdx != lastLineIdx && !printed[lineIdx] {
-			fmt.Println(lyric.Lines[lineIdx].Text)
-			lastLineIdx = lineIdx
-			printed[lineIdx] = true
-		}
-		time.Sleep(200 * time.Millisecond)
 	}
 }
 
-func ModernModeContext(ctx context.Context, lyric *lyrics.Lyric, _ float64) {
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigCh
-		fmt.Print(ansiReset)
-		os.Exit(0)
-	}()
-
-	windowSize := 9 // 4 before, current, 4 after
-
-	for {
-		select {
-		case <-ctx.Done():
-			fmt.Print(ansiReset)
-			return
-		default:
-		}
-
-		// Always get the latest terminal size
-		termWidth := getTerminalWidth()
-		termHeight := getTerminalHeight()
-
-		// Clean UI if no lyrics
-		if lyric == nil || len(lyric.Lines) == 0 {
-			fmt.Print(ansiClear + ansiHome)
-			msg := centerText("No lyrics found", termWidth)
-			padTop := (termHeight - 1) / 2
-			for i := 0; i < padTop; i++ {
-				fmt.Println()
-			}
-			fmt.Printf("%s%s%s%s\n", ansiBold, ansiCyan, msg, ansiReset)
-			time.Sleep(200 * time.Millisecond)
-			continue
-		}
-
-		pos, status, err := mpris.GetPositionAndStatus(ctx)
-		if err != nil {
-			time.Sleep(200 * time.Millisecond)
-			continue
-		}
-		if status != "Playing" {
-			for status != "Playing" {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-				}
-				time.Sleep(1 * time.Second)
-				_, status, err = mpris.GetPositionAndStatus(ctx)
-				if err != nil {
-					time.Sleep(1 * time.Second)
-				}
-			}
-			continue
-		}
-		cur := 0
-		for i, line := range lyric.Lines {
-			if pos < line.Time {
-				break
-			}
-			cur = i
-		}
-
-		fmt.Print(ansiClear + ansiHome)
-		from := cur - windowSize/2
-		if from < 0 {
-			from = 0
-		}
-		to := from + windowSize
-		if to > len(lyric.Lines) {
-			to = len(lyric.Lines)
-		}
-		linesOnScreen := to - from
-		padTop := (termHeight - linesOnScreen) / 2
-		if padTop < 0 {
-			padTop = 0
-		}
-		for i := 0; i < padTop; i++ {
-			fmt.Println()
-		}
-		for i := from; i < to; i++ {
-			line := lyric.Lines[i].Text
-			centered := centerText(line, termWidth)
-			if i == cur {
-				fmt.Printf("%s%s%s%s", ansiBold, ansiCyan, centered, ansiReset) // removed \n
-			} else if i < cur {
-				fmt.Printf("%s%s%s%s%s\n", ansiFaint, ansiItalic, centered, ansiReset, ansiReset)
-			} else {
-				fmt.Printf("%s\n", centered)
-			}
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
+// Model is the terminal UI model for displaying lyrics.
+type Model struct {
+	ch           chan pool.Update
+	state        pool.Update
+	w, h         int
+	styleBefore  gloss.Style
+	styleCurrent gloss.Style
+	styleAfter   gloss.Style
+	hAlignment   gloss.Position
 }
 
-func BubbleTeaModeContext(ctx context.Context, lyric *lyrics.Lyric, _ float64) {
-	if lyric == nil || len(lyric.Lines) == 0 {
-		fmt.Println("No lyrics found")
-		return
-	}
-	p := tea.NewProgram(newLyricModel(lyric), tea.WithContext(ctx))
-	_ = p.Start()
+func newModel(ch chan pool.Update) *Model {
+	m := &Model{ch: ch}
+	m.styleBefore = gloss.NewStyle().Faint(true).Italic(true)
+	m.styleCurrent = gloss.NewStyle().Bold(true).Foreground(gloss.Color("36"))
+	m.styleAfter = gloss.NewStyle()
+	m.hAlignment = 0.5 // center
+	return m
 }
 
-type lyricModel struct {
-	lyric *lyrics.Lyric
-	cur   int
-	w, h  int
+func (m *Model) Init() tea.Cmd {
+	return tea.Batch(waitForUpdate(m.ch), tea.HideCursor)
 }
 
-func newLyricModel(lyric *lyrics.Lyric) *lyricModel {
-	return &lyricModel{lyric: lyric, cur: 0, w: 80, h: 24}
-}
+func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
 
-func (m *lyricModel) Init() tea.Cmd {
-	return nil
-}
-
-func (m *lyricModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
+	switch msg := message.(type) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
+
+	case pool.Update:
+		m.state = msg
+		if runtime.GOOS == "windows" {
+			w, h, err := term.GetSize(int(os.Stdout.Fd()))
+			if err == nil {
+				m.w, m.h = w, h
+			}
+		}
+		cmd = waitForUpdate(m.ch)
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "esc", "ctrl+c":
-			return m, tea.Quit
+			cmd = tea.Quit
+		case "left":
+			m.hAlignment -= 0.5
+			if m.hAlignment < 0 {
+				m.hAlignment = 0
+			}
+		case "right":
+			m.hAlignment += 0.5
+			if m.hAlignment > 1 {
+				m.hAlignment = 1
+			}
 		case "up":
-			if m.cur > 0 {
-				m.cur--
+			if m.state.Playing && lyrics.Timesynced(m.state.Lines) {
+				break
+			}
+			m.state.Index -= 1
+			if m.state.Index < 0 {
+				m.state.Index = 0
 			}
 		case "down":
-			if m.cur < len(m.lyric.Lines)-1 {
-				m.cur++
+			if m.state.Playing && lyrics.Timesynced(m.state.Lines) {
+				break
+			}
+			m.state.Index += 1
+			if m.state.Index >= len(m.state.Lines) {
+				m.state.Index = len(m.state.Lines) - 1
 			}
 		}
 	}
-	return m, nil
+	return m, cmd
 }
 
-func (m *lyricModel) View() string {
-	if m.lyric == nil || len(m.lyric.Lines) == 0 {
-		return gloss.NewStyle().Align(gloss.Center).Width(m.w).Render("No lyrics found")
+func (m *Model) View() string {
+	if m.w < 1 || m.h < 1 {
+		return ""
 	}
-	windowSize := 9
-	from := m.cur - windowSize/2
-	if from < 0 {
-		from = 0
+	if m.state.Err != nil {
+		return gloss.PlaceVertical(
+			m.h, gloss.Center,
+			m.styleCurrent.
+				Align(gloss.Center).
+				Width(m.w).
+				Render(m.state.Err.Error()),
+		)
 	}
-	to := from + windowSize
-	if to > len(m.lyric.Lines) {
-		to = len(m.lyric.Lines)
+	if len(m.state.Lines) == 0 {
+		return ""
 	}
-	lines := make([]string, 0, to-from)
-	for i := from; i < to; i++ {
-		line := m.lyric.Lines[i].Text
-		style := gloss.NewStyle().Width(m.w).Align(gloss.Center)
-		if i == m.cur {
-			style = style.Bold(true).Foreground(gloss.Color("36"))
-		} else if i < m.cur {
-			style = style.Faint(true).Italic(true)
+
+	curLine := m.styleCurrent.
+		Width(m.w).
+		Align(m.hAlignment).
+		Render(m.state.Lines[m.state.Index].Text)
+	curLines := strings.Split(curLine, "\n")
+
+	curLen := len(curLines)
+	beforeLen := (m.h - curLen) / 2
+	afterLen := m.h - beforeLen - curLen
+
+	lines := make([]string, beforeLen+curLen+afterLen)
+
+	// fill lines before current
+	var filledBefore int
+	var beforeIndex = m.state.Index - 1
+	for filledBefore < beforeLen {
+		index := beforeLen - filledBefore - 1
+		if index < 0 || beforeIndex < 0 {
+			filledBefore += 1
+			continue
 		}
-		lines = append(lines, style.Render(line))
+		line := m.styleBefore.
+			Width(m.w).
+			Align(m.hAlignment).
+			Render(m.state.Lines[beforeIndex].Text)
+		beforeIndex -= 1
+		beforeLines := strings.Split(line, "\n")
+		for i := len(beforeLines) - 1; i >= 0; i-- {
+			lineIndex := index - i
+			if lineIndex >= 0 {
+				lines[lineIndex] = beforeLines[len(beforeLines)-1-i]
+			}
+			filledBefore += 1
+		}
 	}
-	return gloss.JoinVertical(gloss.Center, lines...)
+
+	// fill current lines
+	var curIndex = beforeLen
+	for i, line := range curLines {
+		index := curIndex + i
+		if index >= 0 && index < len(lines) {
+			lines[index] = line
+		}
+	}
+
+	// fill lines after current
+	var filledAfter int
+	var afterIndex = m.state.Index + 1
+	for filledAfter < afterLen {
+		index := beforeLen + curLen + filledAfter
+		if index >= len(lines) || afterIndex >= len(m.state.Lines) {
+			filledAfter += 1
+			continue
+		}
+		line := m.styleAfter.
+			Width(m.w).
+			Align(m.hAlignment).
+			Render(m.state.Lines[afterIndex].Text)
+		afterIndex += 1
+		afterLines := strings.Split(line, "\n")
+		for i, line := range afterLines {
+			lineIndex := index + i
+			if lineIndex < len(lines) {
+				lines[lineIndex] = line
+			}
+			filledAfter += 1
+		}
+	}
+
+	return gloss.JoinVertical(m.hAlignment, lines...)
 }
 
-func getTerminalWidth() int {
-	if termWidth < 40 {
-		return 80
+func waitForUpdate(ch chan pool.Update) tea.Cmd {
+	return func() tea.Msg {
+		return <-ch
 	}
-	return termWidth
 }
 
-func getTerminalHeight() int {
-	if termHeight < 10 {
-		return 24
-	}
-	return termHeight
+// TerminalLyricsUI starts the terminal UI and listens for updates from the pool.
+func TerminalLyricsUI(ctx context.Context, pollInterval time.Duration) error {
+	ch := make(chan pool.Update)
+	go pool.Listen(ctx, ch, pollInterval)
+	p := tea.NewProgram(newModel(ch), tea.WithContext(ctx), tea.WithAltScreen())
+	_, err := p.Run()
+	return err
 }
 
-func centerText(s string, width int) string {
-	pad := width - runewidth.StringWidth(s)
-	if pad <= 0 {
-		return s
-	}
-	left := pad / 2
-	right := pad - left
-	return strings.Repeat(" ", left) + s + strings.Repeat(" ", right)
+// TerminalLyricsContext runs the terminal UI for lyrics display.
+func TerminalLyricsContext(ctx context.Context) {
+	_ = TerminalLyricsUI(ctx, 200*time.Millisecond)
 }
