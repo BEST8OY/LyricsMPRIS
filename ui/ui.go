@@ -90,6 +90,22 @@ func ModernModeContext(ctx context.Context, lyric *lyrics.LrcLibLyric, _ float64
 			return
 		default:
 		}
+
+		// Clean UI if no lyrics
+		if lyric == nil || len(lyric.Lines) == 0 {
+			termWidth := getTerminalWidth()
+			termHeight := getTerminalHeight()
+			fmt.Print(ansiClear + ansiHome)
+			msg := centerText("No lyrics found", termWidth)
+			padTop := (termHeight - 1) / 2
+			for i := 0; i < padTop; i++ {
+				fmt.Println()
+			}
+			fmt.Printf("%s%s%s%s\n", ansiBold, ansiCyan, msg, ansiReset)
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
 		pos, status, err := mpris.GetPositionAndStatus()
 		if err != nil {
 			time.Sleep(200 * time.Millisecond)
