@@ -21,19 +21,40 @@ type TrackMetadata struct {
 	Album  string
 }
 
-// getActivePlayer returns the first available MPRIS player name
-func getActivePlayer(ctx context.Context, conn *dbus.Conn) (string, error) {
+// ListPlayers returns all available MPRIS player names for diagnostics.
+func ListPlayers() ([]string, error) {
+	conn, err := dbus.ConnectSessionBus()
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to session bus: %w", err)
+	}
+	defer conn.Close()
 	var names []string
-	err := conn.BusObject().CallWithContext(ctx, "org.freedesktop.DBus.ListNames", 0).Store(&names)
+	err = conn.BusObject().Call("org.freedesktop.DBus.ListNames", 0).Store(&names)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list D-Bus names: %w", err)
+	}
+	var players []string
+	for _, name := range names {
+		if strings.HasPrefix(name, "org.mpris.MediaPlayer2.") {
+			players = append(players, name)
+		}
+	}
+	return players, nil
+}
+
+// getActivePlayer returns only playerctld if available, otherwise error.
+func getActivePlayer(conn *dbus.Conn) (string, error) {
+	var names []string
+	err := conn.BusObject().Call("org.freedesktop.DBus.ListNames", 0).Store(&names)
 	if err != nil {
 		return "", fmt.Errorf("failed to list D-Bus names: %w", err)
 	}
 	for _, name := range names {
-		if strings.HasPrefix(name, "org.mpris.MediaPlayer2.") {
+		if name == "org.mpris.MediaPlayer2.playerctld" {
 			return name, nil
 		}
 	}
-	return "", errors.New("no MPRIS player found")
+	return "", errors.New("playerctld (org.mpris.MediaPlayer2.playerctld) not found on the session bus")
 }
 
 // GetMetadata fetches metadata from the first available MPRIS player
@@ -44,7 +65,7 @@ func GetMetadata(ctx context.Context) (*TrackMetadata, float64, error) {
 	}
 	defer conn.Close()
 
-	playerName, err := getActivePlayer(ctx, conn)
+	playerName, err := getActivePlayer(conn)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -85,7 +106,7 @@ func GetPositionAndStatus(ctx context.Context) (float64, string, error) {
 	}
 	defer conn.Close()
 
-	playerName, err := getActivePlayer(ctx, conn)
+	playerName, err := getActivePlayer(conn)
 	if err != nil {
 		return 0, "", err
 	}

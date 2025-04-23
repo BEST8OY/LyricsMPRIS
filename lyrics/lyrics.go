@@ -9,8 +9,6 @@ import (
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/best8oy/LyricsMPRIS/logutil"
 )
 
 // LyricLine represents a single line of synced lyrics with its timestamp in seconds.
@@ -41,7 +39,6 @@ func FetchLyrics(title, artist, album string, duration float64) (*Lyric, error) 
 	// Try exact match endpoint
 	apiURL := fmt.Sprintf("https://lrclib.net/api/get?track_name=%s&artist_name=%s&album_name=%s&duration=%.0f",
 		url.QueryEscape(title), url.QueryEscape(artist), url.QueryEscape(album), duration)
-	logutil.LogVerbose("[lrclib] Querying: %s", apiURL)
 	lyric, err := fetchAndParse(client, apiURL)
 	if err != nil {
 		return nil, err
@@ -57,13 +54,11 @@ func FetchLyrics(title, artist, album string, duration float64) (*Lyric, error) 
 func fetchAndParse(client *http.Client, apiURL string) (*Lyric, error) {
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
-		logutil.LogVerbose("[lrclib] NewRequest error: %v", err)
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "LyricsMPRIS/1.0 (https://github.com/best8oy/LyricsMPRIS)")
 	resp, err := client.Do(req)
 	if err != nil {
-		logutil.LogVerbose("[lrclib] HTTP error: %v", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -96,7 +91,6 @@ func fetchAndParse(client *http.Client, apiURL string) (*Lyric, error) {
 func fetchLyricsBySearch(client *http.Client, title, artist string) (*Lyric, error) {
 	q := strings.TrimSpace(artist + " " + title)
 	searchURL := fmt.Sprintf("https://lrclib.net/api/search?q=%s", url.QueryEscape(q))
-	logutil.LogVerbose("[lrclib] Fallback search: %s", searchURL)
 
 	req, err := http.NewRequest("GET", searchURL, nil)
 	if err != nil {

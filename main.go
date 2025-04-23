@@ -6,14 +6,11 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/best8oy/LyricsMPRIS/logutil"
 	"github.com/best8oy/LyricsMPRIS/lyrics"
 	"github.com/best8oy/LyricsMPRIS/mpris"
 	"github.com/best8oy/LyricsMPRIS/ui"
 	"github.com/godbus/dbus/v5"
 )
-
-var verbose bool
 
 func watchMPRISAndDisplayLyrics(mode string) {
 	conn, err := dbus.ConnectSessionBus()
@@ -71,36 +68,33 @@ func watchMPRISAndDisplayLyrics(mode string) {
 		fetchAndDisplay(*meta, pos)
 	}
 
-	for {
-		select {
-		case sig := <-signalCh:
-			if sig == nil || len(sig.Body) < 2 {
-				continue
+	for sig := range signalCh {
+		if sig == nil || len(sig.Body) < 2 {
+			continue
+		}
+		iface, ok := sig.Body[0].(string)
+		if !ok || iface != "org.mpris.MediaPlayer2.Player" {
+			continue
+		}
+		changed, ok := sig.Body[1].(map[string]dbus.Variant)
+		if !ok {
+			continue
+		}
+		// Track change
+		if _, ok := changed["Metadata"]; ok {
+			meta, pos, err := mpris.GetMetadata(context.Background())
+			if err == nil && (meta.Title != lastTrack.Title || meta.Artist != lastTrack.Artist || meta.Album != lastTrack.Album) {
+				lastTrack = *meta
+				fetchAndDisplay(*meta, pos)
 			}
-			iface, ok := sig.Body[0].(string)
-			if !ok || iface != "org.mpris.MediaPlayer2.Player" {
-				continue
-			}
-			changed, ok := sig.Body[1].(map[string]dbus.Variant)
-			if !ok {
-				continue
-			}
-			// Track change
-			if _, ok := changed["Metadata"]; ok {
-				meta, pos, err := mpris.GetMetadata(context.Background())
-				if err == nil && (meta.Title != lastTrack.Title || meta.Artist != lastTrack.Artist || meta.Album != lastTrack.Album) {
-					lastTrack = *meta
-					fetchAndDisplay(*meta, pos)
-				}
-			}
-			// Seek/position change
-			if _, ok := changed["Position"]; ok {
-				posVar := changed["Position"]
-				pos, _ := posVar.Value().(int64)
-				sec := float64(pos) / 1e6
-				if lastLyric != nil {
-					fetchAndDisplay(lastTrack, sec)
-				}
+		}
+		// Seek/position change
+		if _, ok := changed["Position"]; ok {
+			posVar := changed["Position"]
+			pos, _ := posVar.Value().(int64)
+			sec := float64(pos) / 1e6
+			if lastLyric != nil {
+				fetchAndDisplay(lastTrack, sec)
 			}
 		}
 	}
@@ -108,7 +102,6 @@ func watchMPRISAndDisplayLyrics(mode string) {
 
 func main() {
 	mode := flag.String("mode", "modern", "Mode: 'pipe' for piping current lyric line, 'modern' for modern terminal UI")
-	flag.BoolVar(&logutil.Verbose, "verbose", false, "Enable verbose logging")
 	flag.Parse()
 
 	watchMPRISAndDisplayLyrics(*mode)
