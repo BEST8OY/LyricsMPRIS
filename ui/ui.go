@@ -124,7 +124,6 @@ func ModernModeContext(ctx context.Context, lyric *lyrics.Lyric, _ float64) {
 	}()
 
 	windowSize := 9 // 4 before, current, 4 after
-	lastCurrent := -1
 
 	for {
 		select {
@@ -134,10 +133,12 @@ func ModernModeContext(ctx context.Context, lyric *lyrics.Lyric, _ float64) {
 		default:
 		}
 
+		// Always get the latest terminal size
+		termWidth := getTerminalWidth()
+		termHeight := getTerminalHeight()
+
 		// Clean UI if no lyrics
 		if lyric == nil || len(lyric.Lines) == 0 {
-			termWidth := getTerminalWidth()
-			termHeight := getTerminalHeight()
 			fmt.Print(ansiClear + ansiHome)
 			msg := centerText("No lyrics found", termWidth)
 			padTop := (termHeight - 1) / 2
@@ -145,7 +146,7 @@ func ModernModeContext(ctx context.Context, lyric *lyrics.Lyric, _ float64) {
 				fmt.Println()
 			}
 			fmt.Printf("%s%s%s%s\n", ansiBold, ansiCyan, msg, ansiReset)
-			time.Sleep(1 * time.Second)
+			time.Sleep(200 * time.Millisecond)
 			continue
 		}
 
@@ -176,41 +177,34 @@ func ModernModeContext(ctx context.Context, lyric *lyrics.Lyric, _ float64) {
 			}
 			cur = i
 		}
-		if cur != lastCurrent {
-			termWidth := getTerminalWidth()
-			termHeight := getTerminalHeight()
-			fmt.Print(ansiClear + ansiHome)
-			from := cur - windowSize/2
-			if from < 0 {
-				from = 0
+
+		fmt.Print(ansiClear + ansiHome)
+		from := cur - windowSize/2
+		if from < 0 {
+			from = 0
+		}
+		to := from + windowSize
+		if to > len(lyric.Lines) {
+			to = len(lyric.Lines)
+		}
+		linesOnScreen := to - from
+		padTop := (termHeight - linesOnScreen) / 2
+		if padTop < 0 {
+			padTop = 0
+		}
+		for i := 0; i < padTop; i++ {
+			fmt.Println()
+		}
+		for i := from; i < to; i++ {
+			line := lyric.Lines[i].Text
+			centered := centerText(line, termWidth)
+			if i == cur {
+				fmt.Printf("%s%s%s%s\n", ansiBold, ansiCyan, centered, ansiReset)
+			} else if i < cur {
+				fmt.Printf("%s%s%s%s%s\n", ansiFaint, ansiItalic, centered, ansiReset, ansiReset)
+			} else {
+				fmt.Printf("%s\n", centered)
 			}
-			to := from + windowSize
-			if to > len(lyric.Lines) {
-				to = len(lyric.Lines)
-			}
-			linesOnScreen := to - from
-			padTop := (termHeight - linesOnScreen) / 2
-			if padTop < 0 {
-				padTop = 0
-			}
-			for i := 0; i < padTop; i++ {
-				fmt.Println()
-			}
-			for i := from; i < to; i++ {
-				line := lyric.Lines[i].Text
-				centered := centerText(line, termWidth)
-				if i == cur {
-					// sptlrx: current line is cyan and bold, no markers
-					fmt.Printf("%s%s%s%s\n", ansiBold, ansiCyan, centered, ansiReset)
-				} else if i < cur {
-					// sptlrx: previous lines are faint/italic
-					fmt.Printf("%s%s%s%s%s\n", ansiFaint, ansiItalic, centered, ansiReset, ansiReset)
-				} else {
-					// sptlrx: next lines are normal
-					fmt.Printf("%s\n", centered)
-				}
-			}
-			lastCurrent = cur
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
@@ -299,13 +293,6 @@ func getTerminalHeight() int {
 		return 24
 	}
 	return termHeight
-}
-
-type winsize struct {
-	Row uint16
-	Col uint16
-	x   uint16
-	y   uint16
 }
 
 func centerText(s string, width int) string {
