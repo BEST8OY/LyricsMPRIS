@@ -34,7 +34,7 @@ func PipeModeContext(ctx context.Context, lyric *lyrics.LrcLibLyric, _ float64) 
 			return
 		default:
 		}
-		pos, status, err := mpris.GetPositionAndStatus()
+		pos, status, err := mpris.GetPositionAndStatus(ctx)
 		if err != nil {
 			time.Sleep(200 * time.Millisecond)
 			continue
@@ -48,7 +48,7 @@ func PipeModeContext(ctx context.Context, lyric *lyrics.LrcLibLyric, _ float64) 
 				default:
 				}
 				time.Sleep(1 * time.Second)
-				_, status, err = mpris.GetPositionAndStatus()
+				_, status, err = mpris.GetPositionAndStatus(ctx)
 				if err != nil {
 					time.Sleep(1 * time.Second)
 				}
@@ -106,7 +106,7 @@ func ModernModeContext(ctx context.Context, lyric *lyrics.LrcLibLyric, _ float64
 			continue
 		}
 
-		pos, status, err := mpris.GetPositionAndStatus()
+		pos, status, err := mpris.GetPositionAndStatus(ctx)
 		if err != nil {
 			time.Sleep(200 * time.Millisecond)
 			continue
@@ -119,7 +119,7 @@ func ModernModeContext(ctx context.Context, lyric *lyrics.LrcLibLyric, _ float64
 				default:
 				}
 				time.Sleep(1 * time.Second)
-				_, status, err = mpris.GetPositionAndStatus()
+				_, status, err = mpris.GetPositionAndStatus(ctx)
 				if err != nil {
 					time.Sleep(1 * time.Second)
 				}
