@@ -131,6 +131,67 @@ func GetPositionAndStatus(ctx context.Context) (float64, string, error) {
 	return float64(pos) / 1e6, status, nil
 }
 
+// WatchAndHandleEvents listens for MPRIS property changes and invokes the callback on track/position changes.
+func WatchAndHandleEvents(ctx context.Context, onTrackChange func(meta TrackMetadata, pos float64), onSeek func(meta TrackMetadata, pos float64)) error {
+	conn, err := dbus.ConnectSessionBus()
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	err = conn.AddMatchSignal(
+		dbus.WithMatchInterface("org.freedesktop.DBus.Properties"),
+		dbus.WithMatchMember("PropertiesChanged"),
+	)
+	if err != nil {
+		return err
+	}
+
+	signalCh := make(chan *dbus.Signal, 10)
+	conn.Signal(signalCh)
+
+	var lastTrack TrackMetadata
+
+	// Initial fetch
+	meta, pos, err := GetMetadata(ctx)
+	if err == nil {
+		lastTrack = *meta
+		onTrackChange(*meta, pos)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case sig := <-signalCh:
+			if sig == nil || len(sig.Body) < 2 {
+				continue
+			}
+			iface, ok := sig.Body[0].(string)
+			if !ok || iface != "org.mpris.MediaPlayer2.Player" {
+				continue
+			}
+			changed, ok := sig.Body[1].(map[string]dbus.Variant)
+			if !ok {
+				continue
+			}
+			if _, ok := changed["Metadata"]; ok {
+				meta, pos, err := GetMetadata(ctx)
+				if err == nil && (meta.Title != lastTrack.Title || meta.Artist != lastTrack.Artist || meta.Album != lastTrack.Album) {
+					lastTrack = *meta
+					onTrackChange(*meta, pos)
+				}
+			}
+			if _, ok := changed["Position"]; ok {
+				posVar := changed["Position"]
+				pos, _ := posVar.Value().(int64)
+				sec := float64(pos) / 1e6
+				onSeek(lastTrack, sec)
+			}
+		}
+	}
+}
+
 // getString safely extracts a string from metadata
 func getString(metadata map[string]dbus.Variant, key string) string {
 	if v, ok := metadata[key]; ok {

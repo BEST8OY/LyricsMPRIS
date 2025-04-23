@@ -25,6 +25,20 @@ const (
 	ansiHome   = "\033[H"
 )
 
+// DisplayLyricsContext handles lyric fetching and UI display for a given track and position.
+func DisplayLyricsContext(ctx context.Context, mode string, meta mpris.TrackMetadata, pos float64) (*lyrics.Lyric, error) {
+	lyric, err := lyrics.FetchLyrics(meta.Title, meta.Artist, meta.Album, pos)
+	if err != nil || lyric == nil || len(lyric.Lines) == 0 {
+		return nil, err
+	}
+	if mode == "pipe" {
+		PipeModeContext(ctx, lyric, pos)
+	} else {
+		ModernModeContext(ctx, lyric, pos)
+	}
+	return lyric, nil
+}
+
 func PipeModeContext(ctx context.Context, lyric *lyrics.Lyric, _ float64) {
 	lastLineIdx := -1
 	printed := make(map[int]bool)
