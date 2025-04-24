@@ -118,7 +118,8 @@ func GetMetadata(ctx context.Context) (*TrackMetadata, float64, error) {
 	if title != "" && artist != "" && album != "" && duration > 0 {
 		return &TrackMetadata{Title: title, Artist: artist, Album: album}, duration, nil
 	}
-	return nil, 0, fmt.Errorf("no valid title/artist/album/duration for %s", playerName)
+	// If metadata is incomplete, return empty TrackMetadata and 0 duration, no error
+	return &TrackMetadata{}, 0, nil
 }
 
 // GetPositionAndStatus fetches the current playback position (seconds) and playback status (Playing/Paused).

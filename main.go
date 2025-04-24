@@ -30,16 +30,16 @@ func main() {
 
 	pollInterval := time.Duration(cfg.pollIntervalMs) * time.Millisecond
 
-	// Fetch metadata and position from MPRIS
 	ctx := context.Background()
-	meta, _, err := mpris.GetMetadata(ctx)
-	if err != nil || meta == nil {
-		// If no track is playing, wait for the next track (handled by UI/pool)
-		meta = &mpris.TrackMetadata{}
+	// Always start the UI, even if no song is playing yet
+	meta := &mpris.TrackMetadata{}
+	pos := 0.0
+	// Try to get current metadata/position, but ignore errors and let UI handle waiting
+	if m, _, err := mpris.GetMetadata(ctx); err == nil && m != nil {
+		meta = m
 	}
-	pos, _, err := mpris.GetPositionAndStatus(ctx)
-	if err != nil {
-		pos = 0.0
+	if p, _, err := mpris.GetPositionAndStatus(ctx); err == nil {
+		pos = p
 	}
 
 	if cfg.displayMode == "pipe" {

@@ -18,17 +18,12 @@ import (
 )
 
 // DisplayLyricsContext handles lyric fetching and UI display for a given track and position.
-func DisplayLyricsContext(ctx context.Context, mode string, meta mpris.TrackMetadata, pos float64, pollInterval time.Duration) (*lyrics.Lyric, error) {
-	lyric, err := lyrics.FetchLyrics(meta.Title, meta.Artist, meta.Album, pos)
-	if err != nil || lyric == nil || len(lyric.Lines) == 0 {
-		return nil, err
-	}
+func DisplayLyricsContext(ctx context.Context, mode string, meta mpris.TrackMetadata, pos float64, pollInterval time.Duration) {
 	if mode == "pipe" {
 		PipeModeContext(ctx, pollInterval)
 	} else {
 		TerminalLyricsContext(ctx, pollInterval)
 	}
-	return lyric, nil
 }
 
 // PipeModeContext prints lyrics line-by-line to stdout for pipe mode.
@@ -68,7 +63,7 @@ type Model struct {
 func newModel(ch chan pool.Update) *Model {
 	m := &Model{ch: ch}
 	m.styleBefore = gloss.NewStyle().Faint(true).Italic(true)
-	m.styleCurrent = gloss.NewStyle().Bold(true).Foreground(gloss.Color("36"))
+	m.styleCurrent = gloss.NewStyle().Bold(true).Foreground(gloss.Color("2"))
 	m.styleAfter = gloss.NewStyle()
 	m.hAlignment = 0.5 // center
 	return m
