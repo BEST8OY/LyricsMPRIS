@@ -18,15 +18,15 @@ import (
 )
 
 // DisplayLyricsContext handles lyric fetching and UI display for a given track and position.
-func DisplayLyricsContext(ctx context.Context, mode string, meta mpris.TrackMetadata, pos float64) (*lyrics.Lyric, error) {
+func DisplayLyricsContext(ctx context.Context, mode string, meta mpris.TrackMetadata, pos float64, pollInterval time.Duration) (*lyrics.Lyric, error) {
 	lyric, err := lyrics.FetchLyrics(meta.Title, meta.Artist, meta.Album, pos)
 	if err != nil || lyric == nil || len(lyric.Lines) == 0 {
 		return nil, err
 	}
 	if mode == "pipe" {
-		PipeModeContext(ctx, 1000*time.Millisecond)
+		PipeModeContext(ctx, pollInterval)
 	} else {
-		TerminalLyricsContext(ctx, 1000*time.Millisecond)
+		TerminalLyricsContext(ctx, pollInterval)
 	}
 	return lyric, nil
 }

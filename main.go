@@ -3,10 +3,9 @@ package main
 import (
 	"context"
 	"flag"
-	"os"
 	"time"
 
-	"github.com/best8oy/LyricsMPRIS/pool"
+	"github.com/best8oy/LyricsMPRIS/mpris"
 	"github.com/best8oy/LyricsMPRIS/ui"
 )
 
@@ -18,7 +17,7 @@ type Config struct {
 
 func main() {
 	pipe := flag.Bool("pipe", false, "Pipe current lyric line to stdout (default is modern UI)")
-	pollMs := flag.Int("poll", 1000, "Lyric poll interval in milliseconds")
+	pollMs := flag.Int("poll", 2000, "Lyric poll interval in milliseconds")
 	flag.Parse()
 
 	cfg := Config{
@@ -30,17 +29,15 @@ func main() {
 	}
 
 	pollInterval := time.Duration(cfg.pollIntervalMs) * time.Millisecond
-	updateCh := make(chan pool.Update, 10)
+
+	// Fetch metadata and position from MPRIS (placeholder, replace with actual implementation)
+	meta := /* fetch metadata */ mpris.TrackMetadata{}
+	pos := 0.0 // fetch current position if needed
 
 	if cfg.displayMode == "pipe" {
-		go pool.Listen(context.Background(), updateCh, pollInterval)
-		ui.PipeModeContext(context.Background(), pollInterval)
+		ui.DisplayLyricsContext(context.Background(), "pipe", meta, pos, pollInterval)
 		return
 	}
 
-	go pool.Listen(context.Background(), updateCh, pollInterval)
-	err := ui.TerminalLyricsContextWithChannel(context.Background(), updateCh)
-	if err != nil {
-		os.Exit(1)
-	}
+	ui.DisplayLyricsContext(context.Background(), "modern", meta, pos, pollInterval)
 }
