@@ -30,14 +30,22 @@ func main() {
 
 	pollInterval := time.Duration(cfg.pollIntervalMs) * time.Millisecond
 
-	// Fetch metadata and position from MPRIS (placeholder, replace with actual implementation)
-	meta := /* fetch metadata */ mpris.TrackMetadata{}
-	pos := 0.0 // fetch current position if needed
+	// Fetch metadata and position from MPRIS
+	ctx := context.Background()
+	meta, _, err := mpris.GetMetadata(ctx)
+	if err != nil || meta == nil {
+		// If no track is playing, wait for the next track (handled by UI/pool)
+		meta = &mpris.TrackMetadata{}
+	}
+	pos, _, err := mpris.GetPositionAndStatus(ctx)
+	if err != nil {
+		pos = 0.0
+	}
 
 	if cfg.displayMode == "pipe" {
-		ui.DisplayLyricsContext(context.Background(), "pipe", meta, pos, pollInterval)
+		ui.DisplayLyricsContext(ctx, "pipe", *meta, pos, pollInterval)
 		return
 	}
 
-	ui.DisplayLyricsContext(context.Background(), "modern", meta, pos, pollInterval)
+	ui.DisplayLyricsContext(ctx, "modern", *meta, pos, pollInterval)
 }
