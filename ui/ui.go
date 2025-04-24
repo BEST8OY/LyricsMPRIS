@@ -24,17 +24,17 @@ func DisplayLyricsContext(ctx context.Context, mode string, meta mpris.TrackMeta
 		return nil, err
 	}
 	if mode == "pipe" {
-		PipeModeContext(ctx)
+		PipeModeContext(ctx, 1000*time.Millisecond)
 	} else {
-		TerminalLyricsContext(ctx)
+		TerminalLyricsContext(ctx, 1000*time.Millisecond)
 	}
 	return lyric, nil
 }
 
 // PipeModeContext prints lyrics line-by-line to stdout for pipe mode.
-func PipeModeContext(ctx context.Context) {
+func PipeModeContext(ctx context.Context, pollInterval time.Duration) {
 	ch := make(chan pool.Update)
-	go pool.Listen(ctx, ch, 200*time.Millisecond)
+	go pool.Listen(ctx, ch, pollInterval)
 	lastLineIdx := -1
 	printed := make(map[int]bool)
 	for {
@@ -226,15 +226,27 @@ func waitForUpdate(ch chan pool.Update) tea.Cmd {
 }
 
 // TerminalLyricsUI starts the terminal UI and listens for updates from the pool.
-func TerminalLyricsUI(ctx context.Context, pollInterval time.Duration) error {
+func TerminalLyricsUI(ctx context.Context, pollInterval time.Duration) (userQuit bool, err error) {
 	ch := make(chan pool.Update)
 	go pool.Listen(ctx, ch, pollInterval)
 	p := tea.NewProgram(newModel(ch), tea.WithContext(ctx), tea.WithAltScreen())
-	_, err := p.Run()
-	return err
+	_, err = p.Run()
+	select {
+	case <-ctx.Done():
+		return false, err
+	default:
+		return true, err
+	}
 }
 
-// TerminalLyricsContext runs the terminal UI for lyrics display.
-func TerminalLyricsContext(ctx context.Context) {
-	_ = TerminalLyricsUI(ctx, 200*time.Millisecond)
+// TerminalLyricsContext runs the terminal UI for lyrics display and returns when the UI is quit.
+func TerminalLyricsContext(ctx context.Context, pollInterval time.Duration) (userQuit bool, err error) {
+	return TerminalLyricsUI(ctx, pollInterval)
+}
+
+// TerminalLyricsContextWithChannel starts the terminal UI with a provided update channel.
+func TerminalLyricsContextWithChannel(ctx context.Context, updateCh chan pool.Update) error {
+	p := tea.NewProgram(newModel(updateCh), tea.WithContext(ctx), tea.WithAltScreen())
+	_, err := p.Run()
+	return err
 }
